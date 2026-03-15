@@ -18,6 +18,5 @@ build/
 .DS_Store
 
 # Data & Logs
-data/*.db
 *.log
 processing.log
