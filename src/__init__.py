@@ -1,0 +1,1 @@
+"""Project SolarWatch — Root Package."""

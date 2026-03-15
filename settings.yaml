@@ -1,0 +1,65 @@
+# ──────────────────────────────────────────
+# Project SolarWatch — Target Configuration
+# ──────────────────────────────────────────
+
+project:
+  name: "SolarWatch"
+  time_window_days: 180
+
+targets:
+  # ── Red Team (红方) ──────────────────────
+  - name: "Huawei FusionSolar"
+    team: "red"
+    google_play_id: "com.huawei.smartpvms"
+    app_store_id: "1529080383"
+    regions: ["DE", "AT", "CH", "IT", "ES", "PL", "RO"]
+
+  - name: "Sungrow iSolarCloud"
+    team: "red"
+    google_play_id: "com.isolarcloud.manager"
+    app_store_id: "1050077439"
+    regions: ["DE", "AT", "CH", "IT", "ES", "PL", "RO"]
+
+  # ── Blue Team (蓝方) ─────────────────────
+  - name: "SMA Energy"
+    team: "blue"
+    google_play_id: "de.sma.energy"
+    app_store_id: "1476822720"
+    regions: ["DE", "AT", "CH", "IT", "ES", "PL", "RO"]
+
+  - name: "Fronius Solar.web"
+    team: "blue"
+    google_play_id: "com.fronius.solarweb"
+    app_store_id: "1528302827"
+    regions: ["DE", "AT", "CH", "IT", "ES", "PL", "RO"]
+
+  - name: "SolarEdge"
+    team: "blue"
+    google_play_id: "com.solaredge.homeowner"
+    app_store_id: "1473952773"
+    regions: ["DE", "AT", "CH", "IT", "ES", "PL", "RO"]
+
+  - name: "Enphase Enlighten"
+    team: "blue"
+    google_play_id: "com.enphaseenergy.myenlighten"
+    app_store_id: "787415770"
+    regions: ["DE", "AT", "CH", "IT", "ES", "PL", "RO"]
+
+# ── LLM Configuration ─────────────────────
+llm:
+  provider: "gemini"           # gemini | openai
+  model: "gemini-2.5-flash"      # Fast + cost-effective, paid tier
+  batch_size: 50
+  temperature: 0.1             # Low temperature for deterministic output
+  max_retries: 5
+
+# ── Database ───────────────────────────────
+database:
+  path: "data/solarwatch.db"
+
+# ── Scraping ───────────────────────────────
+scraping:
+  rate_limit_google: 1.0       # seconds between requests
+  rate_limit_appstore: 0.5
+  max_retries: 3
+  initial_lookback_days: 180   # Cold-start: first ingestion looks back 180 days

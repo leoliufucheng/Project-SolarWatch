@@ -1,0 +1,1 @@
+"""SolarWatch Tests Package."""

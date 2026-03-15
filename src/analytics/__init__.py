@@ -1,0 +1,1 @@
+"""SolarWatch Analytics Package."""
