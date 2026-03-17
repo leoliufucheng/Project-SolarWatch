@@ -46,14 +46,15 @@ COLORS = {
 # ─── Language Pack ─────────────────────────────────────────
 LANGS = {
     "zh": {
-        "nav_title": "### 🧭 导航 (Navigation)",
+        "sidebar_lang": "### 🌐 Language",
+        "sidebar_nav": "### 🧭 导航 (Navigation)",
+        "sidebar_time": "### ⏳ 时间窗口 (Time Window)",
+        "sidebar_filter": "### 🏢 品牌过滤 (App Filter)",
         "nav_options": ["版本质量基准 (Quality Benchmark)", "深度洞察 (Deep Insights)"],
-        "time_window": "### ⏳ Time Window",
-        "quick_select": "Quick Select",
-        "app_filter": "🏢 App Filter",
+        "quick_select": "快速预设",
         "motivation_title": "### 🎯 项目初衷 (Motivation)",
         "motivation_text": "**SolarWatch** 利用 Gemini 2.5 Flash 语义能力，将数千条混沌语料转化为可量化的对标刻度，旨在揭示厂商在数字化转型中的真实研发响应速度。",
-        "compliance_title": "### ⚖️ 合规声明 (Compliance Disclaimer)**：",
+        "compliance_title": "### ⚖️ 合规声明 (Compliance Disclaimer)",
         "compliance_text": "本看板所展示数据均为应用商店（App Store & Google Play）公开评论。系统已通过自动脱敏技术屏蔽潜在的个人隐私信息。分析结论仅供行业研究参考，不代表品牌官方立场。",
         "kpi_ios": "iOS 分析样本量",
         "kpi_android": "Android 分析样本量（缺失Huawei FusionSolar）",
@@ -86,14 +87,21 @@ LANGS = {
         "dna_exp3_text": "**权重矩阵 ($W_i$) 定义：**\n为区分不同严重程度问题的负面影响，系统设定了权重系数：\n- **Critical = 5**：致命问题的权重是基准权重的 5 倍。\n- **Major = 2**：严重缺陷的权重是基准权重的 2 倍。\n- **Minor = 1**：轻微建议按基准权重计算。\n\n**逻辑解释：**\n- **加权求和 ($\\sum (S_i \\times W_i)$)**：通过权重放大 Critical 负评的影响。确保少数致命 Bug 不会被海量轻微好评所掩盖。\n- **归一化处理 ($\\sum W_i$)**：将结果映射回 -1.0 至 1.0 标准区间，消除不同品牌、不同版本之间评论样本量差异带来的统计偏见，确保品牌间公平对标。\n\n**分析结论导向：**\n当得分 < **-0.15** 时，代表“致命 Bug”的伤害已超过正面收益，研发团队需立即介入。\n*注：系统将 -0.15 设定为行业健康基准线，以对冲公开市场的负向反馈偏见。（即满意用户评价动机低于不满意用户）*",
         "mod_b_tracking": "追踪 **{brand}** 最近的 4 个活跃版本: `{versions}`",
         "mod_b_no_data": "该品牌版本数据不足。",
-        "mod_b_no_tags": "这些版本内没有被标记的具体痛点 (root_cause_tag)。"
+        "mod_b_no_tags": "这些版本内没有被标记的具体痛点 (root_cause_tag)。",
+        "deep_insights_item1": "### 📍 区域体感差异 (Regional Variance)\n- 探索同一版本在德国、意大利、英国等不同电网环境下的表现差异，识别本地化适配痛点。",
+        "deep_insights_item2": "### 📱 平台性能鸿沟 (Platform Delta)\n- **iOS vs Android 深度对标**：分析同一品牌在不同系统架构下的研发资源倾斜与稳定性差异。",
+        "deep_insights_item3": "### 💎 需求挖掘机 (Feature Request Mining)\n- 利用 AI 对用户建议进行聚类分析，识别光伏用户最渴望的“杀手级”功能趋势。",
+        "deep_insights_item4": "### ⏱️ 修复时延分析 (Bug Fix Lead Time)\n- 追踪核心 Bug 从首次曝光到彻底修复的平均生命周期，量化各厂家的敏捷开发效能。",
+        "warning_no_data": "⚠️ 没有查找到任何有效分析数据，请调宽时间窗口。",
+        "warning_no_baseline": "⚠️ 未能探测到拥有连续样本 ($N \\ge 5$) 的有效版本基线。"
     },
     "en": {
-        "nav_title": "### 🧭 Navigation",
+        "sidebar_lang": "### 🌐 Language",
+        "sidebar_nav": "### 🧭 Navigation",
+        "sidebar_time": "### ⏳ Time Window",
+        "sidebar_filter": "### 🏢 App Filter",
         "nav_options": ["Quality Benchmark", "Deep Insights"],
-        "time_window": "### ⏳ Time Window",
         "quick_select": "Quick Select",
-        "app_filter": "🏢 App Filter",
         "motivation_title": "### 🎯 Motivation",
         "motivation_text": "**SolarWatch** leverages Gemini 2.5 Flash semantics to translate thousands of chaotic user quotes into quantifiable benchmarks, revealing true R&D agility during digital transformation.",
         "compliance_title": "### ⚖️ Compliance Disclaimer",
@@ -129,7 +137,13 @@ LANGS = {
         "dna_exp3_text": "**Weight Matrix ($W_i$) Definition:**\nTo distinguish the negative impact of different severities, the system applies multipliers:\n- **Critical = 5**: 5x the baseline weight.\n- **Major = 2**: 2x the baseline weight.\n- **Minor = 1**: 1x baseline weight.\n\n**Logical Explanation:**\n- **Weighted Sum ($\\sum (S_i \\times W_i)$)**: Amplifies the impact of Critical negative reviews to ensure fatal bugs aren't buried by a volume of minor praise.\n- **Normalization ($\\sum W_i$)**  : Maps the score back to a -1.0 to 1.0 metric, eliminating statistical bias caused by varying review sample sizes across brands, ensuring fair benchmarking.\n\n**Actionable Insight:**\nA score < **-0.15** indicates that the damage from \"Critical Bugs\" outweighs positive gains, requiring immediate R&D intervention.\n*Note: -0.15 is set as the industry health baseline to offset the negative feedback bias typical of public app stores.*",
         "mod_b_tracking": "Tracking **{brand}**'s latest 4 active releases: `{versions}`",
         "mod_b_no_data": "Insufficient version data for this brand.",
-        "mod_b_no_tags": "No specific root_cause_tag identified in these versions."
+        "mod_b_no_tags": "No specific root_cause_tag identified in these versions.",
+        "deep_insights_item1": "### 📍 Regional Variance\n- Explore performance differences of the same version across different grid environments (e.g., Germany, Italy, UK) to identify localization pain points.",
+        "deep_insights_item2": "### 📱 Platform Delta\n- **iOS vs Android Deep Benchmark**: Analyze R&D resource allocation and stability differences across operating systems for the same brand.",
+        "deep_insights_item3": "### 💎 Feature Request Mining\n- Utilize AI to cluster user suggestions and identify the 'killer feature' trends most desired by PV users.",
+        "deep_insights_item4": "### ⏱️ Bug Fix Lead Time\n- Track the average lifecycle of critical bugs from first exposure to complete resolution, quantifying the agile development efficiency of each manufacturer.",
+        "warning_no_data": "⚠️ No valid analysis data found. Please expand the time window.",
+        "warning_no_baseline": "⚠️ Failed to detect a valid version baseline with continuous samples ($N \\ge 5$)."
     }
 }
 
@@ -191,15 +205,22 @@ def render_sidebar(df: pd.DataFrame) -> tuple[str, Optional[pd.DataFrame]]:
     )
     st.sidebar.markdown("---")
     
-    # Language Switcher
-    lang_sel = st.sidebar.radio("🌐 Language", ["中文", "English"], horizontal=True)
+    # Initial Language Switcher (Bootstrap to get L_dict)
+    st.sidebar.markdown(LANGS[st.session_state.get('lang', 'zh')]["sidebar_lang"])
+    lang_sel = st.sidebar.radio(
+        "Language", 
+        ["中文", "English"], 
+        horizontal=True, 
+        label_visibility="collapsed"
+    )
     st.session_state.lang = "en" if lang_sel == "English" else "zh"
     L_dict = LANGS[st.session_state.lang]
+    st.sidebar.markdown("---")
 
     # Navigation Selector
-    st.sidebar.markdown(L_dict["nav_title"])
+    st.sidebar.markdown(L_dict["sidebar_nav"])
     page_selection = st.sidebar.radio(
-        "选择分析模块",
+        "Navigation",
         L_dict["nav_options"],
         label_visibility="collapsed"
     )
@@ -211,11 +232,12 @@ def render_sidebar(df: pd.DataFrame) -> tuple[str, Optional[pd.DataFrame]]:
     is_benchmark = (page_selection == LANGS["zh"]["nav_options"][0] or page_selection == LANGS["en"]["nav_options"][0])
     
     if is_benchmark:
-        st.sidebar.markdown(L_dict["time_window"])
+        st.sidebar.markdown(L_dict["sidebar_time"])
         time_preset = st.sidebar.selectbox(
             L_dict["quick_select"],
             ["All (180 days)", "Last 90 days", "Last 30 days", "Custom"],
             index=0,
+            label_visibility="collapsed"
         )
 
         if not df.empty:
@@ -236,8 +258,14 @@ def render_sidebar(df: pd.DataFrame) -> tuple[str, Optional[pd.DataFrame]]:
             filtered = df[(df["review_date"].dt.date >= start) & (df["review_date"].dt.date <= end)]
 
         st.sidebar.markdown("---")
+        st.sidebar.markdown(L_dict["sidebar_filter"])
         apps = sorted(df["app_name"].unique())
-        selected_apps = st.sidebar.multiselect(L_dict["app_filter"], apps, default=apps)
+        selected_apps = st.sidebar.multiselect(
+            "App Filter", 
+            apps, 
+            default=apps, 
+            label_visibility="collapsed"
+        )
         filtered = filtered[filtered["app_name"].isin(selected_apps)]
     else:
         filtered = None # Deep Insights doesn't need filters yet
@@ -549,22 +577,12 @@ def main():
         col1, col2 = st.columns(2)
         
         with col1:
-            st.markdown("""
-            ### 📍 区域体感差异 (Regional Variance)
-            - 探索同一版本在德国、意大利、英国等不同电网环境下的表现差异，识别本地化适配痛点。
-            
-            ### 📱 平台性能鸿沟 (Platform Delta)
-            - **iOS vs Android 深度对标**：分析同一品牌在不同系统架构下的研发资源倾斜与稳定性差异。
-            """)
+            st.markdown(L_dict["deep_insights_item1"])
+            st.markdown(L_dict["deep_insights_item2"])
             
         with col2:
-            st.markdown("""
-            ### 💎 需求挖掘机 (Feature Request Mining)
-            - 利用 AI 对用户建议进行聚类分析，识别光伏用户最渴望的“杀手级”功能趋势。
-            
-            ### ⏱️ 修复时延分析 (Bug Fix Lead Time)
-            - 追踪核心 Bug 从首次曝光到彻底修复的平均生命周期，量化各厂家的敏捷开发效能。
-            """)
+            st.markdown(L_dict["deep_insights_item3"])
+            st.markdown(L_dict["deep_insights_item4"])
             
         st.markdown("---")
         st.warning(L_dict["beta_warning"])
@@ -572,13 +590,13 @@ def main():
     else:
         # Render the existing Dashboard (Quality Benchmark)
         if filtered_df is None or filtered_df.empty:
-            st.warning("⚠️ 没有查找到任何有效分析数据，请调宽时间窗口。")
+            st.warning(L_dict["warning_no_data"])
             return
 
         vers_df = compute_endogenous_versions(filtered_df)
         
         if vers_df.empty:
-            st.warning("⚠️ 未能探测到拥有连续样本 ($N \ge 5$) 的有效版本基线。")
+            st.warning(L_dict["warning_no_baseline"])
             return
 
         # Data DNA Preamble
