@@ -30,12 +30,12 @@ from sqlalchemy import func, text
 from src.config.settings import load_settings
 from src.models.database import ProcessedReview, RawReview
 from src.processing.hallucination_guard import validate_evidence_quote
-from src.processing.llm_client import (
-    LLMClient,
-    LLMClientError,
-    QuotaExhaustedError,
-    RateLimitError,
-)
+# from src.processing.llm_client import (
+#     LLMClient,
+#     LLMClientError,
+#     QuotaExhaustedError,
+#     RateLimitError,
+# )
 from src.processing.prompt_templates import BATCH_SYSTEM_PROMPT, build_batch_prompt
 from src.processing.response_parser import parse_batch_response
 from src.utils.db import get_session
@@ -91,7 +91,7 @@ class ProcessingStats:
 
 
 # ─── Circuit Breaker Config ──────────────────────────────
-CONSECUTIVE_429_FUSE_LIMIT = 3
+CONSEC_429_FUSE_LIMIT = 3
 POST_CALL_DELAY_SECONDS = 15
 
 
@@ -104,7 +104,7 @@ class CognitiveProcessor:
     def __init__(self):
         self._settings = load_settings()
         self._batch_size = self._settings.llm.batch_size
-        self._llm_client = LLMClient()
+        # self._llm_client = LLMClient()
 
     def run(
         self,

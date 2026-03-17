@@ -105,7 +105,7 @@ def render_sidebar(df: pd.DataFrame) -> tuple[str, Optional[pd.DataFrame]]:
     st.sidebar.markdown("### 🧭 导航 (Navigation)")
     page_selection = st.sidebar.radio(
         "选择分析模块",
-        ["📊 版本质量基准 (Quality Benchmark)", "🧠 深度洞察 (Deep Insights)"],
+        ["版本质量基准 (Quality Benchmark)", "深度洞察 (Deep Insights)"],
         label_visibility="collapsed"
     )
     st.sidebar.markdown("---")
@@ -142,6 +142,7 @@ def render_sidebar(df: pd.DataFrame) -> tuple[str, Optional[pd.DataFrame]]:
         apps = sorted(df["app_name"].unique())
         selected_apps = st.sidebar.multiselect("🏢 App Filter", apps, default=apps)
         filtered = filtered[filtered["app_name"].isin(selected_apps)]
+    else:
         filtered = None # Deep Insights doesn't need filters yet
 
     st.sidebar.markdown("---")
@@ -150,10 +151,11 @@ def render_sidebar(df: pd.DataFrame) -> tuple[str, Optional[pd.DataFrame]]:
     **SolarWatch** 利用 Gemini 2.5 Flash 语义能力，将数千条混沌语料转化为可量化的对标刻度，旨在揭示厂商在数字化转型中的真实研发响应速度。
     
     """)
+
+    st.sidebar.markdown("""
+    ### ⚖️ 合规声明 (Compliance Disclaimer)**：
+    本看板所展示数据均为应用商店（App Store & Google Play）公开评论。系统已通过自动脱敏技术屏蔽潜在的个人隐私信息。分析结论仅供行业研究参考，不代表品牌官方立场。
     
-    st.sidebar.info("""
-    **⚖️ 合规声明 (Compliance Disclaimer)**：
-    本看板所展示数据均为应用商店（App Store & Google Play）公开评论。系统已通过 AI 自动脱敏技术屏蔽潜在的个人隐私信息（PII）。分析结论仅供行业研究参考，不代表品牌官方立场。
     """)
 
     return page_selection, filtered
@@ -373,7 +375,7 @@ def render_module_c(vers_df: pd.DataFrame):
 def render_module_d(df: pd.DataFrame):
     """Module D: Data Detail Explorer (Real-time Raw Data Drill-down)"""
     st.markdown("<br>", unsafe_allow_html=True)
-    st.subheader("🔍 数据穿透探索器：原始评论与 AI 诊断明细")
+    st.subheader("🔍 原始评论与 AI 分析明细")
     
     # 📖 字段定义与解读指南
     with st.expander("📖 字段定义与解读指南 (Field Definition Guide)", expanded=False):
