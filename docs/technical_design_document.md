@@ -363,6 +363,32 @@ class ProcessedReview(Base):
     )
 ```
 
+```python
+# ─── Table C: app_releases (官方发版记录表) ────────────────────
+class AppRelease(Base):
+    """
+    提供“零时刻 ($T$)”用于精准的爆炸半径分析。
+    解决因设备网络延迟或静默更新导致的“评论存在时间滞后偏差”。
+    """
+    __tablename__ = "app_releases"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    app_name = Column(String(100), nullable=False, index=True)
+    platform = Column(Enum(SourcePlatform), nullable=False)
+    version = Column(String(50), nullable=False)
+    
+    release_date = Column(
+        DateTime, nullable=False, index=True,
+        comment="官方发版日 $T$"
+    )
+    changelog = Column(Text, nullable=True)
+    is_major_update = Column(Boolean, default=False, nullable=False)
+
+    __table_args__ = (
+        Index("uix_app_platform_version", "app_name", "platform", "version", unique=True),
+    )
+```
+
 ### DDL 设计要点
 
 | 字段 | 业务价值 (Why) |

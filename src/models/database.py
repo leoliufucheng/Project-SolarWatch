@@ -262,3 +262,51 @@ class ProcessedReview(Base):
             f"<ProcessedReview(id={self.id}, raw_id={self.raw_id!r}, "
             f"cat={self.primary_category}, sev={self.impact_severity})>"
         )
+
+
+# ─── Table C: app_releases ─────────────────────────────────
+
+class AppRelease(Base):
+    """
+    App Releases Table — Ground-truth version history.
+
+    Purpose: Establish the official 'Zero Moment' (T) for release blast radius calculations.
+    It maps a specific brand's version to an exact release date, preventing timezone drift
+    and ensuring we compute against true updates rather than legacy user stragglers.
+    """
+    __tablename__ = "app_releases"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    app_name = Column(
+        String(100), nullable=False, index=True,
+        comment="Must perfectly match app_name in raw_reviews"
+    )
+    platform = Column(
+        Enum(SourcePlatform, values_callable=lambda e: [x.value for x in e]),
+        nullable=False,
+        comment="app_store or google_play"
+    )
+    version = Column(
+        String(50), nullable=False,
+        comment="The exact version string (e.g., 'v2.1.0')"
+    )
+    release_date = Column(
+        DateTime, nullable=False, index=True,
+        comment="Official release launch date (Zero Moment/T)"
+    )
+    changelog = Column(
+        Text, nullable=True,
+        comment="What changed? Useful for deep attribution analysis."
+    )
+    is_major_update = Column(
+        Boolean, default=False, nullable=False,
+        comment="True if X.0.0 or semantic major bump"
+    )
+
+    # --- Constraints & Indexes ---
+    __table_args__ = (
+        Index("uix_app_platform_version", "app_name", "platform", "version", unique=True),
+    )
+
+    def __repr__(self) -> str:
+        return f"<AppRelease(app='{self.app_name}', v='{self.version}', date='{self.release_date}')>"

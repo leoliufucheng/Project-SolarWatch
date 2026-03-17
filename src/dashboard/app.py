@@ -1,20 +1,27 @@
 """
-SolarWatch Executive Dashboard
-================================
-Sprint 4: Interactive competitive intelligence radar.
-
-Run: streamlit run src/dashboard/app.py
+SolarWatch Visual Dashboard (Endogenous Version Analysis)
+=========================================================
+Strict 1-2-1 Executive Minimalist (McKinsey White) Layout.
+Completely decoupled from external app_releases. Relies solely on 
+raw_reviews.app_version to track lifecycles.
 """
-import sqlite3
-from datetime import datetime, timedelta
-from pathlib import Path
 
+import sqlite3
+import numpy as np
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
 import streamlit as st
+from datetime import datetime, timedelta
+from pathlib import Path
 
-# ─── Page config (must be first) ──────────────────────────
+# Support relative imports for Python execution as standalone script
+import sys
+import os
+sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+from src.dashboard.styles import inject_custom_css
+
+# ─── Page config ─────────────────────────────────────────
 st.set_page_config(
     page_title="SolarWatch CI Radar",
     page_icon="☀️",
@@ -22,45 +29,17 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
-# ─── Paths ────────────────────────────────────────────────
+# ─── Paths & Colors ──────────────────────────────────────
 DB_PATH = Path(__file__).resolve().parent.parent.parent / "data" / "solarwatch.db"
 
-# ─── Premium Color Palette ────────────────────────────────
 COLORS = {
-    "bg_dark": "#0E1117",
-    "card_bg": "#1E2130",
-    "accent": "#F7B731",
-    "positive": "#2ECC71",
-    "negative": "#E74C3C",
-    "neutral": "#95A5A6",
-    "text": "#ECF0F1",
-    "blue": "#3498DB",
-    "purple": "#9B59B6",
+    "bg_light": "#FFFFFF",
+    "positive": "#10B981", # Business Green 
+    "negative": "#EF4444", # Deep Red
+    "neutral": "#9CA3AF",
+    "text": "#1E3A8A", # Deep Blue
+    "warning": "#F59E0B"
 }
-
-APP_COLORS = {
-    "Huawei FusionSolar": "#E74C3C",
-    "Sungrow iSolarCloud": "#E67E22",
-    "SMA Energy": "#3498DB",
-    "Fronius Solar.web": "#2ECC71",
-    "SolarEdge": "#9B59B6",
-    "Enphase Enlighten": "#1ABC9C",
-}
-
-SEVERITY_COLORS = {
-    "Critical": "#E74C3C",
-    "Major": "#F39C12",
-    "Minor": "#27AE60",
-}
-
-CATEGORY_COLORS = {
-    "O&M": "#3498DB",
-    "DevOps": "#E74C3C",
-    "Ecosystem": "#2ECC71",
-    "Localization": "#F39C12",
-    "Commissioning": "#9B59B6",
-}
-
 
 # ═══════════════════════════════════════════════════════════
 # DATA LOADING (cached)
@@ -74,61 +53,52 @@ def load_data() -> pd.DataFrame:
         SELECT 
             rr.review_id,
             rr.app_name,
-            rr.source_platform,
-            rr.region_iso,
-            rr.rating,
             rr.version,
+            rr.source_platform,
+            rr.rating,
             rr.review_date,
-            rr.review_language,
             rr.content,
             pr.primary_category,
             pr.user_persona,
             pr.impact_severity,
-            pr.is_sarcasm,
-            pr.evidence_quote,
             pr.sentiment_score,
             pr.root_cause_tag,
-            pr.hallucination_check_passed
+            pr.evidence_quote
         FROM processed_reviews pr
         JOIN raw_reviews rr ON pr.raw_id = rr.review_id
         WHERE pr.hallucination_check_passed = 1
-          AND pr.primary_category IS NOT NULL
     """
     df = pd.read_sql_query(query, conn)
     conn.close()
 
     df["review_date"] = pd.to_datetime(df["review_date"])
     df["date"] = df["review_date"].dt.date
-    df["week"] = df["review_date"].dt.to_period("W").apply(lambda r: r.start_time)
-    df["month"] = df["review_date"].dt.to_period("M").apply(lambda r: r.start_time)
+    
+    # Filter out empty versions
+    df = df[df['version'].notna()]
+    df['version'] = df['version'].astype(str).str.strip()
+    df = df[df['version'] != '']
+    df = df[df['version'] != 'Unknown']
+    
     return df
 
+def get_severity_weight(sev: str) -> float:
+    if sev == 'Critical': return 5.0
+    if sev == 'Major': return 2.0
+    if sev == 'Minor': return 1.0
+    return 1.0
 
 # ═══════════════════════════════════════════════════════════
-# SIDEBAR (Control Center)
+# SIDEBAR
 # ═══════════════════════════════════════════════════════════
 
 def render_sidebar(df: pd.DataFrame) -> pd.DataFrame:
-    """Render sidebar filters and return filtered DataFrame."""
     st.sidebar.markdown(
         "<h1 style='text-align:center;'>☀️ SolarWatch<br>CI Radar</h1>",
         unsafe_allow_html=True,
     )
     st.sidebar.markdown("---")
 
-    # Platform mode
-    platform_mode = st.sidebar.radio(
-        "🔬 Platform Mode",
-        ["🌍 Global Blended (全部)", "🍏 Apple-to-Apples (仅 iOS)"],
-        index=0,
-    )
-
-    filtered = df.copy()
-    if "Apple" in platform_mode:
-        filtered = filtered[filtered["source_platform"] == "app_store"]
-
-    # Time slider
-    st.sidebar.markdown("---")
     st.sidebar.markdown("### ⏳ Time Window")
     time_preset = st.sidebar.selectbox(
         "Quick Select",
@@ -136,11 +106,11 @@ def render_sidebar(df: pd.DataFrame) -> pd.DataFrame:
         index=0,
     )
 
-    if filtered.empty:
-        return filtered
+    if df.empty:
+        return df
 
-    min_date = filtered["review_date"].min().date()
-    max_date = filtered["review_date"].max().date()
+    min_date = df["review_date"].min().date()
+    max_date = df["review_date"].max().date()
 
     if time_preset == "Last 90 days":
         start = max_date - timedelta(days=90)
@@ -149,492 +119,411 @@ def render_sidebar(df: pd.DataFrame) -> pd.DataFrame:
         start = max_date - timedelta(days=30)
         end = max_date
     elif time_preset == "Custom":
-        start, end = st.sidebar.date_input(
-            "Date Range",
-            value=(min_date, max_date),
-            min_value=min_date,
-            max_value=max_date,
-        )
+        start, end = st.sidebar.date_input("Date Range", value=(min_date, max_date))
     else:
         start, end = min_date, max_date
 
-    filtered = filtered[
-        (filtered["review_date"].dt.date >= start)
-        & (filtered["review_date"].dt.date <= end)
-    ]
+    filtered = df[(df["review_date"].dt.date >= start) & (df["review_date"].dt.date <= end)]
 
-    # App filter
     st.sidebar.markdown("---")
     apps = sorted(df["app_name"].unique())
-    selected_apps = st.sidebar.multiselect(
-        "🏢 App Filter",
-        apps,
-        default=apps,
-    )
+    selected_apps = st.sidebar.multiselect("🏢 App Filter", apps, default=apps)
     filtered = filtered[filtered["app_name"].isin(selected_apps)]
 
-    # Persona filter
     st.sidebar.markdown("---")
-    persona_mode = st.sidebar.radio(
-        "👤 Persona",
-        ["All", "👷 Installers Only", "🏠 Homeowners Only"],
-        index=0,
-    )
-    if "Installer" in persona_mode:
-        filtered = filtered[filtered["user_persona"] == "Installer"]
-    elif "Homeowner" in persona_mode:
-        filtered = filtered[filtered["user_persona"] == "Homeowner"]
-
-    # Stats
-    st.sidebar.markdown("---")
-    st.sidebar.metric("Filtered Reviews", f"{len(filtered):,}")
-    is_ios_only = "Apple" in platform_mode
-    st.sidebar.caption(
-        "🍏 iOS Only" if is_ios_only else "🌍 Global (All Platforms)"
-    )
+    st.sidebar.markdown("""
+    ### 🎯 项目初衷 (Motivation) 
+    **SolarWatch** 利用 Gemini 2.5 Flash 语义能力，将数千条混沌语料转化为可量化的对标刻度，旨在揭示厂商在数字化转型中的真实研发响应速度。
+    
+    """)
 
     return filtered
 
-
 # ═══════════════════════════════════════════════════════════
-# TAB 1: Macro & Trends
-# ═══════════════════════════════════════════════════════════
-
-def render_tab_macro(df: pd.DataFrame, is_ios_only: bool):
-    """Tab 1: macro KPIs + brand sentiment comparison + time trends."""
-
-    # ── KPI Row ──
-    col1, col2, col3, col4 = st.columns(4)
-    with col1:
-        st.metric("📊 Total Reviews", f"{len(df):,}")
-    with col2:
-        avg_sentiment = df["sentiment_score"].mean() if not df.empty else 0
-        emoji = "🟢" if avg_sentiment > 0 else "🔴"
-        st.metric(f"{emoji} Avg Sentiment", f"{avg_sentiment:+.2f}")
-    with col3:
-        critical_count = len(df[df["impact_severity"].isin(["Major", "Critical"])])
-        st.metric("🚨 Critical+Major", f"{critical_count:,}")
-    with col4:
-        installer_count = len(df[df["user_persona"] == "Installer"])
-        st.metric("👷 Installers", f"{installer_count}")
-
-    st.markdown("---")
-
-    # ── Brand Sentiment Bar Chart ──
-    st.subheader("📊 Brand Sentiment Comparison")
-
-    if not is_ios_only:
-        huawei_mask = df["app_name"] == "Huawei FusionSolar"
-        if huawei_mask.any():
-            huawei_platforms = df.loc[huawei_mask, "source_platform"].unique()
-            if len(huawei_platforms) == 1 and "app_store" in huawei_platforms:
-                st.warning(
-                    "⚠️ **Huawei FusionSolar** 仅有 iOS 数据！"
-                    "在 Global Blended 模式下可能造成比较偏差。"
-                    "建议切换到 🍏 Apple-to-Apples 模式进行公平对比。"
-                )
-
-    if not df.empty:
-        brand_stats = (
-            df.groupby("app_name")
-            .agg(
-                avg_sentiment=("sentiment_score", "mean"),
-                avg_rating=("rating", "mean"),
-                count=("review_id", "count"),
-            )
-            .reset_index()
-            .sort_values("avg_sentiment")
-        )
-        color_map = {app: APP_COLORS.get(app, "#888") for app in brand_stats["app_name"]}
-
-        fig_bar = px.bar(
-            brand_stats,
-            x="app_name",
-            y="avg_sentiment",
-            color="app_name",
-            color_discrete_map=color_map,
-            text=brand_stats["avg_sentiment"].apply(lambda v: f"{v:+.2f}"),
-            labels={"app_name": "App", "avg_sentiment": "Avg Sentiment Score"},
-            hover_data=["avg_rating", "count"],
-        )
-        fig_bar.update_layout(
-            template="plotly_dark",
-            plot_bgcolor="rgba(0,0,0,0)",
-            paper_bgcolor="rgba(0,0,0,0)",
-            showlegend=False,
-            xaxis_title="",
-            yaxis_title="Avg Sentiment",
-            yaxis=dict(range=[-1, 1], zeroline=True, zerolinecolor="#555"),
-            height=400,
-        )
-        fig_bar.update_traces(textposition="outside")
-        st.plotly_chart(fig_bar, use_container_width=True)
-    else:
-        st.info("No data to display with current filters.")
-
-    st.markdown("---")
-
-    # ── Weekly Sentiment Trend Line ──
-    st.subheader("📈 Weekly Sentiment Trend")
-
-    if not df.empty:
-        weekly = (
-            df.groupby(["week", "app_name"])
-            .agg(avg_sentiment=("sentiment_score", "mean"), count=("review_id", "count"))
-            .reset_index()
-        )
-        weekly["week"] = pd.to_datetime(weekly["week"])
-
-        fig_line = px.line(
-            weekly,
-            x="week",
-            y="avg_sentiment",
-            color="app_name",
-            color_discrete_map=APP_COLORS,
-            markers=True,
-            labels={
-                "week": "Week",
-                "avg_sentiment": "Avg Sentiment",
-                "app_name": "App",
-            },
-        )
-        fig_line.update_layout(
-            template="plotly_dark",
-            plot_bgcolor="rgba(0,0,0,0)",
-            paper_bgcolor="rgba(0,0,0,0)",
-            yaxis=dict(range=[-1, 1], zeroline=True, zerolinecolor="#555"),
-            height=450,
-            legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="center", x=0.5),
-        )
-        fig_line.add_hline(y=0, line_dash="dash", line_color="#555", opacity=0.5)
-        st.plotly_chart(fig_line, use_container_width=True)
-
-    # ── Weekly Negative Review Count ──
-    st.subheader("🔥 Weekly Negative Review Volume (Sentiment < 0)")
-
-    if not df.empty:
-        neg = df[df["sentiment_score"] < 0].copy()
-        if not neg.empty:
-            neg_weekly = (
-                neg.groupby(["week", "app_name"])
-                .size()
-                .reset_index(name="negative_count")
-            )
-            neg_weekly["week"] = pd.to_datetime(neg_weekly["week"])
-
-            fig_neg = px.bar(
-                neg_weekly,
-                x="week",
-                y="negative_count",
-                color="app_name",
-                color_discrete_map=APP_COLORS,
-                barmode="stack",
-                labels={
-                    "week": "Week",
-                    "negative_count": "Negative Reviews",
-                    "app_name": "App",
-                },
-            )
-            fig_neg.update_layout(
-                template="plotly_dark",
-                plot_bgcolor="rgba(0,0,0,0)",
-                paper_bgcolor="rgba(0,0,0,0)",
-                height=400,
-                legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="center", x=0.5),
-            )
-            st.plotly_chart(fig_neg, use_container_width=True)
-        else:
-            st.info("No negative reviews in current filter.")
-
-
-# ═══════════════════════════════════════════════════════════
-# TAB 2: Pain Point Matrix
+# ENDOGENOUS PROCESSING
 # ═══════════════════════════════════════════════════════════
 
-def render_tab_painpoints(df: pd.DataFrame):
-    """Tab 2: category donut + root cause bar chart."""
-
-    col_left, col_right = st.columns([1, 2])
-
-    with col_left:
-        st.subheader("🗂️ Category Distribution")
-        if not df.empty:
-            cat_counts = df["primary_category"].value_counts().reset_index()
-            cat_counts.columns = ["category", "count"]
-
-            fig_donut = px.pie(
-                cat_counts,
-                values="count",
-                names="category",
-                color="category",
-                color_discrete_map=CATEGORY_COLORS,
-                hole=0.5,
-            )
-            fig_donut.update_layout(
-                template="plotly_dark",
-                paper_bgcolor="rgba(0,0,0,0)",
-                height=450,
-                legend=dict(orientation="h", yanchor="bottom", y=-0.15, xanchor="center", x=0.5),
-            )
-            fig_donut.update_traces(textposition="inside", textinfo="percent+label")
-            st.plotly_chart(fig_donut, use_container_width=True)
-
-            # Category sentiment table
-            cat_stats = (
-                df.groupby("primary_category")
-                .agg(
-                    count=("review_id", "count"),
-                    avg_sentiment=("sentiment_score", "mean"),
-                    critical=("impact_severity", lambda x: (x == "Critical").sum()),
-                    major=("impact_severity", lambda x: (x == "Major").sum()),
-                )
-                .reset_index()
-                .sort_values("count", ascending=False)
-            )
-            cat_stats["avg_sentiment"] = cat_stats["avg_sentiment"].apply(lambda v: f"{v:+.2f}")
-            st.dataframe(cat_stats, hide_index=True, use_container_width=True)
-        else:
-            st.info("No data.")
-
-    with col_right:
-        st.subheader("🔥 Top 10 Root Causes (Major + Critical)")
-
-        if not df.empty:
-            severe = df[
-                (df["impact_severity"].isin(["Major", "Critical"]))
-                & (df["root_cause_tag"].notna())
-                & (df["root_cause_tag"] != "N/A")
-                & (~df["root_cause_tag"].str.contains("N/A", na=False))
-            ]
-
-            if not severe.empty:
-                root_counts = (
-                    severe.groupby("root_cause_tag")
-                    .agg(
-                        count=("review_id", "count"),
-                        avg_sentiment=("sentiment_score", "mean"),
-                    )
-                    .reset_index()
-                    .sort_values("count", ascending=True)
-                    .tail(10)
-                )
-
-                fig_root = px.bar(
-                    root_counts,
-                    x="count",
-                    y="root_cause_tag",
-                    orientation="h",
-                    color="avg_sentiment",
-                    color_continuous_scale=["#E74C3C", "#F39C12", "#27AE60"],
-                    range_color=[-1, 0],
-                    text="count",
-                    labels={
-                        "root_cause_tag": "Root Cause",
-                        "count": "Occurrences",
-                        "avg_sentiment": "Avg Sentiment",
-                    },
-                )
-                fig_root.update_layout(
-                    template="plotly_dark",
-                    plot_bgcolor="rgba(0,0,0,0)",
-                    paper_bgcolor="rgba(0,0,0,0)",
-                    height=500,
-                    yaxis_title="",
-                    coloraxis_colorbar=dict(title="Sentiment"),
-                )
-                fig_root.update_traces(textposition="outside")
-                st.plotly_chart(fig_root, use_container_width=True)
-            else:
-                st.info("No Major/Critical root causes found with current filters.")
-
-        # Severity breakdown
-        st.subheader("⚡ Severity Breakdown by App")
-        if not df.empty:
-            sev_counts = (
-                df.groupby(["app_name", "impact_severity"])
-                .size()
-                .reset_index(name="count")
-            )
-            fig_sev = px.bar(
-                sev_counts,
-                x="app_name",
-                y="count",
-                color="impact_severity",
-                color_discrete_map=SEVERITY_COLORS,
-                barmode="stack",
-                labels={"app_name": "App", "count": "Reviews", "impact_severity": "Severity"},
-            )
-            fig_sev.update_layout(
-                template="plotly_dark",
-                plot_bgcolor="rgba(0,0,0,0)",
-                paper_bgcolor="rgba(0,0,0,0)",
-                height=400,
-                xaxis_title="",
-            )
-            st.plotly_chart(fig_sev, use_container_width=True)
-
+def compute_endogenous_versions(df: pd.DataFrame) -> pd.DataFrame:
+    """Group by app_name and version, calculate weighted health and timeline."""
+    records = []
+    
+    # Calculate weights row by row first to speed up groupby logic
+    df_copy = df.copy()
+    df_copy['weight'] = df_copy['impact_severity'].apply(get_severity_weight)
+    df_copy['weighted_score_contrib'] = df_copy['sentiment_score'] * df_copy['weight']
+    
+    grouped = df_copy.groupby(['app_name', 'version'])
+    
+    for (app_name, version), group in grouped:
+        count = len(group)
+        if count < 5:
+            continue # Filter out orphan versions
+            
+        t_min = group['review_date'].min()
+        t_max = group['review_date'].max()
+        
+        total_weight = group['weight'].sum()
+        s_weighted = group['weighted_score_contrib'].sum() / total_weight if total_weight > 0 else 0
+        
+        # Get top complaint
+        tags = group[group['root_cause_tag'].notna() & (group['root_cause_tag'] != 'N/A')]['root_cause_tag']
+        top_complaint = tags.value_counts().idxmax() if not tags.empty else "No major issues"
+        
+        records.append({
+            "app_name": app_name,
+            "version": version,
+            "Review Count": count,
+            "T_min": t_min,
+            "T_max": t_max,
+            "Active Days": (t_max - t_min).days + 1,
+            "S_weighted": s_weighted,
+            "Top Complaint": top_complaint
+        })
+        
+    return pd.DataFrame(records)
 
 # ═══════════════════════════════════════════════════════════
-# TAB 3: Evidence Court
+# MODULE RENDERING
 # ═══════════════════════════════════════════════════════════
 
-def render_tab_evidence(df: pd.DataFrame):
-    """Tab 3: interactive filterable data table."""
-
-    st.subheader("🔎 Evidence Browser")
-
-    # Quick filters
-    col1, col2, col3, col4 = st.columns(4)
-    with col1:
-        severe_only = st.checkbox("🚨 Major/Critical Only", value=False)
-    with col2:
-        sarcasm_only = st.checkbox("🎭 Sarcasm Only", value=False)
-    with col3:
-        installer_only = st.checkbox("👷 Installers Only", value=False)
-    with col4:
-        search_text = st.text_input("🔍 Search text", "")
-
-    filtered = df.copy()
-
-    if severe_only:
-        filtered = filtered[filtered["impact_severity"].isin(["Major", "Critical"])]
-    if sarcasm_only:
-        filtered = filtered[filtered["is_sarcasm"] == 1]
-    if installer_only:
-        filtered = filtered[filtered["user_persona"] == "Installer"]
-    if search_text:
-        mask = (
-            filtered["content"].str.contains(search_text, case=False, na=False)
-            | filtered["evidence_quote"].str.contains(search_text, case=False, na=False)
-            | filtered["root_cause_tag"].str.contains(search_text, case=False, na=False)
-        )
-        filtered = mask_df if (mask_df := filtered[mask]) is not None else filtered
-
-    st.caption(f"Showing {len(filtered):,} reviews")
-
-    if not filtered.empty:
-        display_cols = [
-            "date",
-            "app_name",
-            "source_platform",
-            "rating",
-            "primary_category",
-            "impact_severity",
-            "user_persona",
-            "is_sarcasm",
-            "sentiment_score",
-            "root_cause_tag",
-            "evidence_quote",
-            "content",
-        ]
-        display_df = filtered[display_cols].copy()
-        display_df = display_df.sort_values("date", ascending=False)
-        display_df["sentiment_score"] = display_df["sentiment_score"].apply(
-            lambda v: f"{v:+.2f}" if pd.notna(v) else ""
-        )
-        display_df["is_sarcasm"] = display_df["is_sarcasm"].apply(
-            lambda v: "🎭 Yes" if v else ""
-        )
-
-        display_df.columns = [
-            "Date", "App", "Platform", "⭐", "Category", "Severity",
-            "Persona", "Sarcasm", "Sentiment", "Root Cause", "Evidence Quote", "Full Text",
-        ]
-
-        st.dataframe(
-            display_df,
-            use_container_width=True,
-            height=600,
-            column_config={
-                "Full Text": st.column_config.TextColumn(width="large"),
-                "Evidence Quote": st.column_config.TextColumn(width="medium"),
-            },
-        )
-    else:
-        st.info("No reviews match current filters.")
+def render_kpis(df: pd.DataFrame, vers_df: pd.DataFrame):
+    if df.empty or vers_df.empty:
+        return
+        
+    ios_count = len(df[df['source_platform'] == 'app_store'])
+    android_count = len(df[df['source_platform'] == 'google_play'])
+    
+    avg_active_days = vers_df['Active Days'].mean()
+    
+    col1, col2, col3 = st.columns(3)
+    col1.metric("iOS 分析样本量", f"{ios_count:,}")
+    col2.metric("Android 分析样本量（缺失Huawei FusionSolar）", f"{android_count:,}")
+    col3.metric("平均版本活跃周期", f"{avg_active_days:.1f} 天")
 
 
-# ═══════════════════════════════════════════════════════════
-# CUSTOM CSS
-# ═══════════════════════════════════════════════════════════
+def render_module_a(vers_df: pd.DataFrame):
+    """Module A: Weighted Health Leaderboard (Top 3 per app)"""
+    st.subheader("🏆 软件质量红黑榜：谁在定义行业标杆？")
+    st.info(
+    "* **标杆效应：** 榜单顶部通常由长期维持在 **$S_{weighted}$ > 0.1** 分值的品牌占据，这表明其软件迭代已进入“正向口碑循环”。\n"
+    "* **风险阈值：** 处于红色区域底部（$S_{weighted}$ <-0.5）的版本通常伴随着 **Critical (致命阻断)** 问题的集中爆发。若某品牌连续三个版本处于该区间，往往预示着该品牌正在经历大规模的底层架构调整或严重的交付质量危机。\n\n"
+    )
+    
+    
+    if vers_df.empty:
+        st.info("无满足条件的发版记录。")
+        return
+        
+    # Sort and pick top 3 per app
+    top3_vers = vers_df.sort_values(['app_name', 'S_weighted'], ascending=[True, False])
+    top3_vers = top3_vers.groupby('app_name').head(3).reset_index(drop=True)
+    
+    # Sort globally for the chart
+    top3_vers = top3_vers.sort_values(by='S_weighted', ascending=True)
+    top3_vers['Label'] = top3_vers['app_name'] + " | " + top3_vers['version']
+    top3_vers['Color'] = top3_vers['S_weighted'].apply(lambda x: COLORS['positive'] if x >= -0.15 else COLORS['negative'])
+    
+    fig = go.Figure()
+    fig.add_trace(go.Bar(
+        x=top3_vers['S_weighted'],
+        y=top3_vers['Label'],
+        orientation='h',
+        marker_color=top3_vers['Color'],
+        text=[f"{val:+.2f}" for val in top3_vers['S_weighted']],
+        textposition="outside",
+        hovertext=[f"Reviews: {c} | {t}" for c, t in zip(top3_vers['Review Count'], top3_vers['Top Complaint'])],
+        hoverinfo="y+x+text"
+    ))
+    
+    fig.update_layout(
+        template="plotly_white",
+        paper_bgcolor="rgba(0,0,0,0)",
+        plot_bgcolor="rgba(0,0,0,0)",
+        height=400,
+        margin=dict(l=0, r=0, t=10, b=0),
+        xaxis=dict(zeroline=True, zerolinewidth=2, zerolinecolor="#111827", showgrid=True, gridcolor="#E5E7EB"),
+        yaxis=dict(showgrid=False),
+    )
+    st.plotly_chart(fig, use_container_width=True)
 
-def inject_css():
-    st.markdown(
-        """
-        <style>
-        /* Dark premium theme overrides */
-        .stApp {
-            background: linear-gradient(180deg, #0E1117 0%, #1A1D2E 100%);
-        }
-        [data-testid="stSidebar"] {
-            background: linear-gradient(180deg, #141824 0%, #1E2130 100%);
-            border-right: 1px solid #2D3250;
-        }
-        [data-testid="stMetricValue"] {
-            font-size: 2rem !important;
-            font-weight: 700;
-        }
-        [data-testid="stMetricLabel"] {
-            font-size: 0.9rem !important;
-            color: #95A5A6;
-        }
-        div[data-testid="stTabs"] button {
-            font-size: 1rem !important;
-            font-weight: 600;
-            padding: 0.75rem 1.5rem;
-        }
-        div[data-testid="stTabs"] button[aria-selected="true"] {
-            border-bottom: 3px solid #F7B731;
-            color: #F7B731;
-        }
-        .stDataFrame {
-            border-radius: 8px;
-            overflow: hidden;
-        }
-        </style>
-        """,
-        unsafe_allow_html=True,
+def render_module_b(df: pd.DataFrame, vers_df: pd.DataFrame):
+    """Module B: 4-Version Drift Analysis"""
+    st.subheader("🧬 病灶演进：最近四个版本，他们在修 Bug 还是制造 Bug？")
+    st.info("📊 **洞察提示**：如果某类 Critical 级别的痛点在连续四个版本中占比均未下降，通常意味着该问题已从“偶发 Bug”演变为“架构性顽疾”，建议作为季度核心技术攻坚目标。")
+    
+    if vers_df.empty:
+        return
+        
+    apps = sorted(vers_df['app_name'].unique())
+    selected_app = st.selectbox("选择目标品牌进行深潜 (Deep Dive):", apps)
+    
+    app_vers = vers_df[vers_df['app_name'] == selected_app].sort_values(by='T_max', ascending=False)
+    latest_4 = app_vers.head(4)['version'].tolist()
+    
+    if not latest_4:
+        st.info("该品牌版本数据不足。")
+        return
+        
+    st.markdown(f"追踪 **{selected_app}** 最近的 4 个活跃版本: `{', '.join(latest_4)}`")
+    
+    # Filter raw reviews to these 4 versions
+    drift_df = df[(df['app_name'] == selected_app) & (df['version'].isin(latest_4))].copy()
+    drift_df = drift_df[(drift_df['root_cause_tag'].notna()) & (drift_df['root_cause_tag'] != 'N/A')]
+    
+    if drift_df.empty:
+        st.info("这些版本内没有被标记的具体痛点 (root_cause_tag)。")
+        return
+        
+    # Get Top 5 global tags for these 4 versions
+    top5_tags = drift_df['root_cause_tag'].value_counts().head(5).index.tolist()
+    drift_top5 = drift_df[drift_df['root_cause_tag'].isin(top5_tags)]
+    
+    # Count occurrences per version per tag
+    grouped = drift_top5.groupby(['root_cause_tag', 'version']).size().reset_index(name='count')
+    
+    color_scale = px.colors.sequential.Blues[::-1] # Darkest for newest
+    color_map = {v: color_scale[i % len(color_scale)] for i, v in enumerate(latest_4)}
+    
+    fig = px.bar(
+        grouped,
+        x="root_cause_tag",
+        y="count",
+        color="version",
+        barmode="group",
+        category_orders={"version": latest_4},
+        color_discrete_map=color_map,
+        labels={"root_cause_tag": "核心痛点", "count": "曝出频次", "version": "版本代号"},
+        height=350
+    )
+    
+    fig.update_layout(
+        template="plotly_white",
+        paper_bgcolor="rgba(0,0,0,0)",
+        plot_bgcolor="rgba(0,0,0,0)",
+        margin=dict(l=0, r=0, t=10, b=0),
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
+    )
+    st.plotly_chart(fig, use_container_width=True)
+    
+   
+
+def render_module_c(vers_df: pd.DataFrame):
+    """Module C: Iteration Cadence Timeline"""
+    st.subheader("📈 迭代脉搏：谁在快速响应欧洲市场？")
+    
+    st.info(
+        "**图例洞察**：横坐标为时间线，色块跨度代表版本的市场存活期。**色块深浅映射 $S_{weighted}$**：深红 = 口碑崩塌，深绿 = 质量稳健。\n"
+        "发版密度高（色块紧凑）且颜色翠绿，代表该品牌在数字战场上的敏捷修复与作战能力处于统治地位。"
+    )
+    
+    if vers_df.empty:
+        return
+        
+    df_gantt = vers_df.sort_values(by=['app_name', 'T_min'])
+    df_gantt['Hover_Text'] = df_gantt.apply(
+        lambda r: f"Version: {r['version']}<br>Score: {r['S_weighted']:+.2f}<br>Reviews: {r['Review Count']}<br>Top Bug: {r['Top Complaint']}", 
+        axis=1
+    )
+    
+    fig = px.timeline(
+        df_gantt, 
+        x_start="T_min", 
+        x_end="T_max", 
+        y="app_name",
+        color="S_weighted",
+        color_continuous_scale=[COLORS['negative'], COLORS['neutral'], COLORS['positive']],
+        color_continuous_midpoint=-0.15,
+        hover_name="version",
+        hover_data={"S_weighted": ':.2f', "Hover_Text": True, "T_min": False, "T_max": False, "app_name": False},
+        labels={"app_name": "品牌阵营"}
+    )
+    
+    # Custom hover template
+    fig.update_traces(hovertemplate="%{customdata[1]}<extra></extra>")
+    
+    fig.update_layout(
+        template="plotly_white",
+        paper_bgcolor="rgba(0,0,0,0)",
+        plot_bgcolor="rgba(0,0,0,0)",
+        height=400,
+        margin=dict(l=0, r=0, t=10, b=0)
+    )
+    st.plotly_chart(fig, use_container_width=True)
+
+
+def render_module_d(df: pd.DataFrame):
+    """Module D: Data Detail Explorer (Real-time Raw Data Drill-down)"""
+    st.markdown("<br>", unsafe_allow_html=True)
+    st.subheader("🔍 数据穿透探索器：原始评论与 AI 诊断明细")
+    
+    # 📖 字段定义与解读指南
+    with st.expander("📖 字段定义与解读指南 (Field Definition Guide)", expanded=False):
+        st.markdown("""
+- **App 名称**：品牌标准名称。
+- **平台**：数据的抓取渠道（🍎 iOS 或 🤖 Android）。
+- **版本**：用户评论时对应的软件版本号。
+- **日期**：评论提交的原始时间（UTC）。
+- **严重程度**：🔴 Critical (致命) / 🟡 Major (严重) / 🟢 Minor (轻微)。
+- **AI 核心诊断**：Gemini 解析出的核心痛点标签。
+- **用户原声**：用户提交的原始多语言文本。
+- **AI 证据提取**：AI 从原文中逐字摘录的判定依据，确保分析可回溯。
+- **个体情感分**：量化评分（-1.0 至 1.0）。
+        """)
+    
+    if df.empty:
+        st.info("数据为空，调整过滤条件。")
+        return
+    
+    # --- Brand Metadata Mapping ---
+    brand_mapping = {
+        '1105054117': 'Huawei FusionSolar', 'com.huawei.smartpv': 'Huawei FusionSolar',
+        '1530232432': 'SMA Energy', 'com.sma.energy': 'SMA Energy',
+        '1551061321': 'Fronius Solar.web', 'com.fronius.solarweb': 'Fronius Solar.web',
+        '1134260021': 'Sungrow iSolarCloud', 'com.isolarcloud.sunnypv': 'Sungrow iSolarCloud',
+        '1121029283': 'Enphase Enlighten', 'com.enphaseenergy.enlighten': 'Enphase Enlighten',
+        '1004652277': 'SolarEdge', 'com.solaredge.onestop': 'SolarEdge'
+    }
+    
+    display_df = df.copy()
+    display_df['app_name'] = display_df['app_name'].apply(lambda x: brand_mapping.get(str(x), x))
+    
+    # Format Data
+    display_df = display_df.sort_values(by='review_date', ascending=False)
+    
+    if pd.api.types.is_datetime64_any_dtype(display_df['review_date']):
+        display_df['review_date'] = display_df['review_date'].dt.strftime('%Y-%m-%d %H:%M')
+    
+    # Platform mapping
+    plat_map = {
+        'app_store': '🍎 iOS',
+        'google_play': '🤖 Android'
+    }
+    display_df['source_platform'] = display_df['source_platform'].map(plat_map).fillna(display_df['source_platform'])
+    
+    # Severity Emoji Mapping
+    sev_map = {
+        'Critical': '🔴 Critical',
+        'Major': '🟡 Major',
+        'Minor': '🟢 Minor'
+    }
+    display_df['impact_severity'] = display_df['impact_severity'].map(sev_map).fillna(display_df['impact_severity'])
+    
+    # Column definitions and ordering
+    cols_def = {
+        'app_name': 'App 名称',
+        'source_platform': '平台',
+        'version': '版本',
+        'review_date': '日期',
+        'impact_severity': '严重程度',
+        'root_cause_tag': 'AI 核心诊断',
+        'content': '用户原声',
+        'evidence_quote': 'AI 证据提取',
+        'sentiment_score': '个体情感分'
+    }
+    
+    available_cols_keys = [k for k in cols_def.keys() if k in display_df.columns]
+    display_df = display_df[available_cols_keys].rename(columns=cols_def)
+    
+    # DataFrame Interactive Rendering
+    st.dataframe(
+        display_df.head(500),
+        use_container_width=True,
+        hide_index=True,
+        height=500
     )
 
-
 # ═══════════════════════════════════════════════════════════
-# MAIN
+# MAIN APP EXECUTION
 # ═══════════════════════════════════════════════════════════
 
 def main():
-    inject_css()
-
-    # Load data
-    if not DB_PATH.exists():
-        st.error(f"Database not found: {DB_PATH}")
-        st.stop()
+    inject_custom_css()
 
     df = load_data()
+    filtered_df = render_sidebar(df)
+    
+    #st.markdown("## 光伏 App 迭代健康洞察 (PV Software Iteration Insights)")
 
-    if df.empty:
-        st.error("No processed reviews found in database.")
-        st.stop()
+    if filtered_df.empty:
+        st.warning("⚠️ 没有查找到任何有效分析数据，请调宽时间窗口。")
+        return
 
-    # Sidebar filters
-    filtered = render_sidebar(df)
-    is_ios_only = len(filtered["source_platform"].unique()) == 1 and "app_store" in filtered["source_platform"].values
+    vers_df = compute_endogenous_versions(filtered_df)
+    
+    if vers_df.empty:
+        st.warning("⚠️ 未能探测到拥有连续样本 ($N \ge 5$) 的有效版本基线。")
+        return
 
-    # Tabs
-    tab1, tab2, tab3 = st.tabs([
-        "📊 Macro & Trends",
-        "🔥 Pain Point Matrix",
-        "⚖️ Evidence Court",
-    ])
+    # Data DNA Preamble
+    st.markdown("### 🧬 数据基因 (Data DNA)：多维语义解析与量化标准")
+    st.markdown("""
+    SolarWatch 系统的分析基础源于对海量非结构化文本的量化处理。
+    每一条原始评论均经过 **Gemini 2.5 Flash** 的深度语义解析，提取出以下核心维度：
+    """)
 
-    with tab1:
-        render_tab_macro(filtered, is_ios_only)
+    # --- 子部分 1 ---
+    with st.expander("1. 个体情感分 (Sentiment_Score)"):
+        st.write("""
+        是对单条评论文本的语境、语气及情绪强度进行的定量分析。Gemini 将主观描述转化为 **-1.0 至 1.0** 之间的连续数值：
+        - **1.0 (极度正面)**：表示用户对产品表现出极高的满意度与品牌忠诚度。
+        - **0.0 (中性)**：表示评论仅包含事实陈述，不具备明显的情绪倾向。
+        - **-1.0 (极度负面)**：表示用户对产品体验表现出极度的不满或业务遭受了实质性损失。
+    
+        **分析样例：**
+        - 样例 1: *"App crashing every time I open settings."* → **-0.85**
+        - 样例 2: *"Installation was smooth, highly recommend."* → **+0.92**
+        """)
 
-    with tab2:
-        render_tab_painpoints(filtered)
+    # --- 子部分 2 ---
+    with st.expander("2. 业务影响等级 (Severity Categories)"):
+        st.write("""
+        评论描述的问题对用户业务运营的影响程度，Gemini将评论分为Critical，Major，Minor三个等级：
+        - 🔴 **Critical (致命)**：核心业务流程中断。如：无法登录、App 持续崩溃、或电站实时监控数据丢失。
+        - 🟡 **Major (严重)**：核心功能受损或体验显著下降。如：数据刷新严重延迟、复杂的配网逻辑错误、或核心交互功能失效。
+        - 🟢 **Minor (轻微)**：非核心功能的优化建议。如：界面语言翻译误差、UI 审美偏好、或辅助性的功能改进提议。
+    """)
 
-    with tab3:
-        render_tab_evidence(filtered)
+    # --- 子部分 3 ---
+    with st.expander("3. 惩罚性加权健康分算法 (Severity-Weighted Scoring)"):
+        st.latex(r"S_{weighted} = \frac{\sum (Sentiment\_Score_i \times W_i)}{\sum W_i}")
+        st.write("""
+        **权重矩阵 ($W_i$) 定义：**
+        为区分不同严重程度问题的负面影响，系统设定了权重系数：
+        - **Critical = 5**：致命问题的权重是基准权重的 5 倍。
+        - **Major = 2**：严重缺陷的权重是基准权重的 2 倍。
+        - **Minor = 1**：轻微建议按基准权重计算。
 
+        **逻辑解释：**
+        - **加权求和 ($\sum (S_i \times W_i)$)**：通过权重放大 Critical 负评的影响。确保少数致命 Bug 不会被海量轻微好评所掩盖。
+        - **归一化处理 ($\sum W_i$)**：将结果映射回 -1.0 至 1.0 标准区间，消除不同品牌、不同版本之间评论样本量差异带来的统计偏见，确保品牌间公平对标。
+
+        **分析结论导向：**
+        当得分 < **-0.15** 时，代表“致命 Bug”的伤害已超过正面收益，研发团队需立即介入。
+        *注：系统将 -0.15 设定为行业健康基准线，以对冲公开市场的负向反馈偏见。（即满意用户评价动机低于不满意用户）*
+        """)
+    st.markdown("<br>", unsafe_allow_html=True)
+
+    
+
+    # Top Level
+    render_kpis(filtered_df, vers_df)
+    st.markdown("<br>", unsafe_allow_html=True)
+    
+    # Middle Level (1-2-1 Flow)
+    colA, colB = st.columns([1, 1])
+    with colA:
+        render_module_a(vers_df)
+    with colB:
+        render_module_b(filtered_df, vers_df)
+        
+    st.markdown("<br>", unsafe_allow_html=True)
+    
+    # Bottom Level
+    render_module_c(vers_df)
+    
+    # Data Drilldown Level
+    render_module_d(filtered_df)
+    
 
 if __name__ == "__main__":
     main()
