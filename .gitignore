@@ -20,3 +20,8 @@ build/
 # Data & Logs
 *.log
 processing.log
+*.csv
+*.xlsx
+
+# Streamlit local secrets
+.streamlit/secrets.toml

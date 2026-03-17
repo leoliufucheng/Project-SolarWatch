@@ -12,8 +12,10 @@ import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
 import streamlit as st
+import re
 from datetime import datetime, timedelta
 from pathlib import Path
+from typing import Optional
 
 # Support relative imports for Python execution as standalone script
 import sys
@@ -92,43 +94,55 @@ def get_severity_weight(sev: str) -> float:
 # SIDEBAR
 # ═══════════════════════════════════════════════════════════
 
-def render_sidebar(df: pd.DataFrame) -> pd.DataFrame:
+def render_sidebar(df: pd.DataFrame) -> tuple[str, Optional[pd.DataFrame]]:
     st.sidebar.markdown(
         "<h1 style='text-align:center;'>☀️ SolarWatch<br>CI Radar</h1>",
         unsafe_allow_html=True,
     )
     st.sidebar.markdown("---")
-
-    st.sidebar.markdown("### ⏳ Time Window")
-    time_preset = st.sidebar.selectbox(
-        "Quick Select",
-        ["All (180 days)", "Last 90 days", "Last 30 days", "Custom"],
-        index=0,
+    
+    # Navigation Selector
+    st.sidebar.markdown("### 🧭 导航 (Navigation)")
+    page_selection = st.sidebar.radio(
+        "选择分析模块",
+        ["📊 版本质量基准 (Quality Benchmark)", "🧠 深度洞察 (Deep Insights)"],
+        label_visibility="collapsed"
     )
-
-    if df.empty:
-        return df
-
-    min_date = df["review_date"].min().date()
-    max_date = df["review_date"].max().date()
-
-    if time_preset == "Last 90 days":
-        start = max_date - timedelta(days=90)
-        end = max_date
-    elif time_preset == "Last 30 days":
-        start = max_date - timedelta(days=30)
-        end = max_date
-    elif time_preset == "Custom":
-        start, end = st.sidebar.date_input("Date Range", value=(min_date, max_date))
-    else:
-        start, end = min_date, max_date
-
-    filtered = df[(df["review_date"].dt.date >= start) & (df["review_date"].dt.date <= end)]
-
     st.sidebar.markdown("---")
-    apps = sorted(df["app_name"].unique())
-    selected_apps = st.sidebar.multiselect("🏢 App Filter", apps, default=apps)
-    filtered = filtered[filtered["app_name"].isin(selected_apps)]
+
+    filtered = df.copy()
+
+    # Only show filters if on the Benchmark page
+    if "Quality Benchmark" in page_selection:
+        st.sidebar.markdown("### ⏳ Time Window")
+        time_preset = st.sidebar.selectbox(
+            "Quick Select",
+            ["All (180 days)", "Last 90 days", "Last 30 days", "Custom"],
+            index=0,
+        )
+
+        if not df.empty:
+            min_date = df["review_date"].min().date()
+            max_date = df["review_date"].max().date()
+
+            if time_preset == "Last 90 days":
+                start = max_date - timedelta(days=90)
+                end = max_date
+            elif time_preset == "Last 30 days":
+                start = max_date - timedelta(days=30)
+                end = max_date
+            elif time_preset == "Custom":
+                start, end = st.sidebar.date_input("Date Range", value=(min_date, max_date))
+            else:
+                start, end = min_date, max_date
+
+            filtered = df[(df["review_date"].dt.date >= start) & (df["review_date"].dt.date <= end)]
+
+        st.sidebar.markdown("---")
+        apps = sorted(df["app_name"].unique())
+        selected_apps = st.sidebar.multiselect("🏢 App Filter", apps, default=apps)
+        filtered = filtered[filtered["app_name"].isin(selected_apps)]
+        filtered = None # Deep Insights doesn't need filters yet
 
     st.sidebar.markdown("---")
     st.sidebar.markdown("""
@@ -136,8 +150,13 @@ def render_sidebar(df: pd.DataFrame) -> pd.DataFrame:
     **SolarWatch** 利用 Gemini 2.5 Flash 语义能力，将数千条混沌语料转化为可量化的对标刻度，旨在揭示厂商在数字化转型中的真实研发响应速度。
     
     """)
+    
+    st.sidebar.info("""
+    **⚖️ 合规声明 (Compliance Disclaimer)**：
+    本看板所展示数据均为应用商店（App Store & Google Play）公开评论。系统已通过 AI 自动脱敏技术屏蔽潜在的个人隐私信息（PII）。分析结论仅供行业研究参考，不代表品牌官方立场。
+    """)
 
-    return filtered
+    return page_selection, filtered
 
 # ═══════════════════════════════════════════════════════════
 # ENDOGENOUS PROCESSING
@@ -424,6 +443,19 @@ def render_module_d(df: pd.DataFrame):
     available_cols_keys = [k for k in cols_def.keys() if k in display_df.columns]
     display_df = display_df[available_cols_keys].rename(columns=cols_def)
     
+    # --- Data Privacy / PII Masking ---
+    def mask_pii(text):
+        if not isinstance(text, str):
+            return text
+        # 屏蔽邮箱
+        text = re.sub(r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b', '***@***.***', text)
+        # 屏蔽疑似手机号 (匹配连续 8 位及以上的数字)
+        text = re.sub(r'\+?\d{8,15}', '+***-****-****', text)
+        return text
+
+    if '用户原声' in display_df.columns:
+        display_df['用户原声'] = display_df['用户原声'].apply(mask_pii)
+    
     # DataFrame Interactive Rendering
     st.dataframe(
         display_df.head(500),
@@ -440,89 +472,116 @@ def main():
     inject_custom_css()
 
     df = load_data()
-    filtered_df = render_sidebar(df)
+    page_name, filtered_df = render_sidebar(df)
     
-    #st.markdown("## 光伏 App 迭代健康洞察 (PV Software Iteration Insights)")
-
-    if filtered_df.empty:
-        st.warning("⚠️ 没有查找到任何有效分析数据，请调宽时间窗口。")
-        return
-
-    vers_df = compute_endogenous_versions(filtered_df)
-    
-    if vers_df.empty:
-        st.warning("⚠️ 未能探测到拥有连续样本 ($N \ge 5$) 的有效版本基线。")
-        return
-
-    # Data DNA Preamble
-    st.markdown("### 🧬 数据基因 (Data DNA)：多维语义解析与量化标准")
-    st.markdown("""
-    SolarWatch 系统的分析基础源于对海量非结构化文本的量化处理。
-    每一条原始评论均经过 **Gemini 2.5 Flash** 的深度语义解析，提取出以下核心维度：
-    """)
-
-    # --- 子部分 1 ---
-    with st.expander("1. 个体情感分 (Sentiment_Score)"):
-        st.write("""
-        是对单条评论文本的语境、语气及情绪强度进行的定量分析。Gemini 将主观描述转化为 **-1.0 至 1.0** 之间的连续数值：
-        - **1.0 (极度正面)**：表示用户对产品表现出极高的满意度与品牌忠诚度。
-        - **0.0 (中性)**：表示评论仅包含事实陈述，不具备明显的情绪倾向。
-        - **-1.0 (极度负面)**：表示用户对产品体验表现出极度的不满或业务遭受了实质性损失。
-    
-        **分析样例：**
-        - 样例 1: *"App crashing every time I open settings."* → **-0.85**
-        - 样例 2: *"Installation was smooth, highly recommend."* → **+0.92**
-        """)
-
-    # --- 子部分 2 ---
-    with st.expander("2. 业务影响等级 (Severity Categories)"):
-        st.write("""
-        评论描述的问题对用户业务运营的影响程度，Gemini将评论分为Critical，Major，Minor三个等级：
-        - 🔴 **Critical (致命)**：核心业务流程中断。如：无法登录、App 持续崩溃、或电站实时监控数据丢失。
-        - 🟡 **Major (严重)**：核心功能受损或体验显著下降。如：数据刷新严重延迟、复杂的配网逻辑错误、或核心交互功能失效。
-        - 🟢 **Minor (轻微)**：非核心功能的优化建议。如：界面语言翻译误差、UI 审美偏好、或辅助性的功能改进提议。
-    """)
-
-    # --- 子部分 3 ---
-    with st.expander("3. 惩罚性加权健康分算法 (Severity-Weighted Scoring)"):
-        st.latex(r"S_{weighted} = \frac{\sum (Sentiment\_Score_i \times W_i)}{\sum W_i}")
-        st.write("""
-        **权重矩阵 ($W_i$) 定义：**
-        为区分不同严重程度问题的负面影响，系统设定了权重系数：
-        - **Critical = 5**：致命问题的权重是基准权重的 5 倍。
-        - **Major = 2**：严重缺陷的权重是基准权重的 2 倍。
-        - **Minor = 1**：轻微建议按基准权重计算。
-
-        **逻辑解释：**
-        - **加权求和 ($\sum (S_i \times W_i)$)**：通过权重放大 Critical 负评的影响。确保少数致命 Bug 不会被海量轻微好评所掩盖。
-        - **归一化处理 ($\sum W_i$)**：将结果映射回 -1.0 至 1.0 标准区间，消除不同品牌、不同版本之间评论样本量差异带来的统计偏见，确保品牌间公平对标。
-
-        **分析结论导向：**
-        当得分 < **-0.15** 时，代表“致命 Bug”的伤害已超过正面收益，研发团队需立即介入。
-        *注：系统将 -0.15 设定为行业健康基准线，以对冲公开市场的负向反馈偏见。（即满意用户评价动机低于不满意用户）*
-        """)
-    st.markdown("<br>", unsafe_allow_html=True)
-
-    
-
-    # Top Level
-    render_kpis(filtered_df, vers_df)
-    st.markdown("<br>", unsafe_allow_html=True)
-    
-    # Middle Level (1-2-1 Flow)
-    colA, colB = st.columns([1, 1])
-    with colA:
-        render_module_a(vers_df)
-    with colB:
-        render_module_b(filtered_df, vers_df)
+    if "Deep Insights" in page_name:
+        # Render the Advanced Insights Placeholder Page
+        st.markdown("## 🧠 深度洞察 (Advanced Insights) — Coming Soon")
+        st.info("本模块旨在通过更细颗粒度的维度，解码品牌背后的核心竞争力。")
         
-    st.markdown("<br>", unsafe_allow_html=True)
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            st.markdown("""
+            ### 📍 区域体感差异 (Regional Variance)
+            - 探索同一版本在德国、意大利、英国等不同电网环境下的表现差异，识别本地化适配痛点。
+            
+            ### 📱 平台性能鸿沟 (Platform Delta)
+            - **iOS vs Android 深度对标**：分析同一品牌在不同系统架构下的研发资源倾斜与稳定性差异。
+            """)
+            
+        with col2:
+            st.markdown("""
+            ### 💎 需求挖掘机 (Feature Request Mining)
+            - 利用 AI 对用户建议进行聚类分析，识别光伏用户最渴望的“杀手级”功能趋势。
+            
+            ### ⏱️ 修复时延分析 (Bug Fix Lead Time)
+            - 追踪核心 Bug 从首次曝光到彻底修复的平均生命周期，量化各厂家的敏捷开发效能。
+            """)
+            
+        st.markdown("---")
+        st.warning("🚀 目前这些功能处于 Beta 内部测试阶段。")
+        
+    else:
+        # Render the existing Dashboard (Quality Benchmark)
+        if filtered_df is None or filtered_df.empty:
+            st.warning("⚠️ 没有查找到任何有效分析数据，请调宽时间窗口。")
+            return
+
+        vers_df = compute_endogenous_versions(filtered_df)
+        
+        if vers_df.empty:
+            st.warning("⚠️ 未能探测到拥有连续样本 ($N \ge 5$) 的有效版本基线。")
+            return
+
+        # Data DNA Preamble
+        st.markdown("### 🧬 数据基因 (Data DNA)：多维语义解析与量化标准")
+        st.markdown("""
+        SolarWatch 系统的分析基础源于对海量非结构化文本的量化处理。
+        每一条原始评论均经过 **Gemini 2.5 Flash** 的深度语义解析，提取出以下核心维度：
+        """)
+        
+        # --- 子部分 1 ---
+        with st.expander("1. 个体情感分 (Sentiment_Score)"):
+            st.write("""
+            是对单条评论文本的语境、语气及情绪强度进行的定量分析。Gemini 将主观描述转化为 **-1.0 至 1.0** 之间的连续数值：
+            - **1.0 (极度正面)**：表示用户对产品表现出极高的满意度与品牌忠诚度。
+            - **0.0 (中性)**：表示评论仅包含事实陈述，不具备明显的情绪倾向。
+            - **-1.0 (极度负面)**：表示用户对产品体验表现出极度的不满或业务遭受了实质性损失。
+        
+            **分析样例：**
+            - 样例 1: *"App crashing every time I open settings."* → **-0.85**
+            - 样例 2: *"Installation was smooth, highly recommend."* → **+0.92**
+            """)
+        
+        # --- 子部分 2 ---
+        with st.expander("2. 业务影响等级 (Severity Categories)"):
+            st.write("""
+            评论描述的问题对用户业务运营的影响程度，Gemini将评论分为Critical，Major，Minor三个等级：
+            - 🔴 **Critical (致命)**：核心业务流程中断。如：无法登录、App 持续崩溃、或电站实时监控数据丢失。
+            - 🟡 **Major (严重)**：核心功能受损或体验显著下降。如：数据刷新严重延迟、复杂的配网逻辑错误、或核心交互功能失效。
+            - 🟢 **Minor (轻微)**：非核心功能的优化建议。如：界面语言翻译误差、UI 审美偏好、或辅助性的功能改进提议。
+        """)
+        
+        # --- 子部分 3 ---
+        with st.expander("3. 惩罚性加权健康分算法 (Severity-Weighted Scoring)"):
+            st.latex(r"S_{weighted} = \frac{\sum (Sentiment\_Score_i \times W_i)}{\sum W_i}")
+            st.write("""
+            **权重矩阵 ($W_i$) 定义：**
+            为区分不同严重程度问题的负面影响，系统设定了权重系数：
+            - **Critical = 5**：致命问题的权重是基准权重的 5 倍。
+            - **Major = 2**：严重缺陷的权重是基准权重的 2 倍。
+            - **Minor = 1**：轻微建议按基准权重计算。
     
-    # Bottom Level
-    render_module_c(vers_df)
+            **逻辑解释：**
+            - **加权求和 ($\sum (S_i \times W_i)$)**：通过权重放大 Critical 负评的影响。确保少数致命 Bug 不会被海量轻微好评所掩盖。
+            - **归一化处理 ($\sum W_i$)**：将结果映射回 -1.0 至 1.0 标准区间，消除不同品牌、不同版本之间评论样本量差异带来的统计偏见，确保品牌间公平对标。
     
-    # Data Drilldown Level
-    render_module_d(filtered_df)
+            **分析结论导向：**
+            当得分 < **-0.15** 时，代表“致命 Bug”的伤害已超过正面收益，研发团队需立即介入。
+            *注：系统将 -0.15 设定为行业健康基准线，以对冲公开市场的负向反馈偏见。（即满意用户评价动机低于不满意用户）*
+            """)
+        
+        st.markdown("<br>", unsafe_allow_html=True)
+    
+        # Top Level
+        render_kpis(filtered_df, vers_df)
+        st.markdown("<br>", unsafe_allow_html=True)
+        
+        # Middle Level (1-2-1 Flow)
+        colA, colB = st.columns([1, 1])
+        with colA:
+            render_module_a(vers_df)
+        with colB:
+            render_module_b(filtered_df, vers_df)
+            
+        st.markdown("<br>", unsafe_allow_html=True)
+        
+        # Bottom Level
+        render_module_c(vers_df)
+        
+        # Data Drilldown Level
+        render_module_d(filtered_df)
     
 
 if __name__ == "__main__":
