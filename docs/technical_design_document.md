@@ -865,6 +865,62 @@ description: Guide for building the Streamlit reporting dashboard
 
 ---
 
+### Sprint 5: Advanced Insights — Regional Variance (Week 9-10)
+
+**目标:** 区域体感差异深度分析模块
+
+| 任务 | 产出 | 验收标准 |
+|------|------|---------|
+| 数据管道补全 | `load_data()` 增加 `region_iso` | DataFrame 包含 `region_iso` 列 |
+| 计算引擎 | `compute_regional_variance()` | $\Delta S_{region}$ 计算正确, N≥5 护栏生效 |
+| 热力图 | Choropleth (Component A) | 欧洲 7 国着色, Hover 显示 N+根因 |
+| 偏差排行榜 | Leaderboard (Component B) | Top 3 标杆 + Top 3 重灾区 |
+| 根因下钻 | Deep Dive (Component C) | 选择国家后展示 root_cause_tag 分布 |
+| 国际化 | `LANGS` 字典扩展 | 中英文完美切换, 国家名双语映射 |
+
+**核心公式:**
+$$\Delta S_{region} = S_{country\_weighted} - S_{global\_weighted}$$
+
+其中:
+$$S_{country\_weighted} = \frac{\sum_{i \in \text{Country}_C} (S_i \times W_i)}{\sum_{i \in \text{Country}_C} W_i}$$
+
+**Sprint 5 验收:** Deep Insights 页面展示完整的区域体感差异分析, 含交互式热力图 + 偏差排行榜 + 根因下钻
+
+---
+
+### Sprint 5.2: Platform Delta — 平台性能鸿沟 (Week 10)
+
+**目标:** iOS vs Android 跨平台研发资源透明化
+
+| 任务 | 产出 | 验收标准 |
+|------|------|---------|
+| 计算引擎 | `compute_platform_delta()` | $\Delta S_{platform}$ 计算正确, N≥5 护栏生效 |
+| 龙卷风图 | Tornado Chart (Component A) | 5 品牌背靠背条形图, 华为自动排除 |
+| 根因矩阵 | Root Cause Matrix (Component B) | 双端 Top 3 负面标签对比 |
+| 洞察阈值 | Insight Badges | $|\Delta S| < 0.1$ → 平衡, $|\Delta S| > 0.2$ → 偏见警报 |
+| 国际化 | `LANGS` 字典扩展 (14 keys) | 中英文完美切换 |
+
+**核心公式:**
+$$\Delta S_{platform} = S_{iOS} - S_{Android}$$
+
+**Sprint 5.2 验收:** Deep Insights 页面展示龙卷风对比图 + 根因矩阵 + 研发偏见自动检测
+
+---
+
+### 🖱️ 交互规范：过滤器层级 (Filter Hierarchy)
+
+| 层级 | 位置 | 组件 | 作用域 |
+|------|------|------|--------|
+| **Primary Filter** | Sidebar (全局) | Time Window, App Filter | 跨页面持久生效，控制底层数据集 |
+| **Secondary Filter** | In-page (页内) | Brand Selector, Country Selector | 仅改变当前图表的展示维度，不筛选底层数据 |
+
+**强制规范:**
+- 一级过滤器必须在侧边栏全局渲染，确保用户切换页面时上下文不丢失。
+- 二级过滤器仅用于改变图表的聚焦对象（如：在区域差异模块中选择品牌），不影响其他模块的数据源。
+- 严禁在 Deep Insights 主页面内重复渲染 App Filter 或 Time Window 组件。
+
+---
+
 ## 附录: settings.yaml 示例
 
 ```yaml
